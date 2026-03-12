@@ -1,0 +1,376 @@
+openapi: 3.0.3
+info:
+  title: NuPass Ticketing API (MVP)
+  version: 0.1.0
+  description: Contrato mínimo para MVP (auth, events, ticketing, checkout, payments, scans, reports).
+servers:
+  - url: https://api.nupass.cl
+paths:
+  /v1/auth/register:
+    post:
+      summary: Registro de usuario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Usuario creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /v1/auth/login:
+    post:
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /v1/me:
+    get:
+      summary: Perfil autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Perfil del usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /v1/events:
+    post:
+      summary: Crear evento (draft)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventRequest'
+      responses:
+        '201':
+          description: Evento creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+
+  /v1/public/events:
+    get:
+      summary: Listado público de eventos
+      parameters:
+        - in: query
+          name: city
+          schema: { type: string }
+        - in: query
+          name: category
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Listado paginado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  page:
+                    type: integer
+                  total:
+                    type: integer
+
+  /v1/events/{eventId}/ticket-types:
+    post:
+      summary: Crear tipo de ticket
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTicketTypeRequest'
+      responses:
+        '201':
+          description: Tipo creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketType'
+
+  /v1/checkout/quote:
+    post:
+      summary: Cotización de checkout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutQuoteRequest'
+      responses:
+        '200':
+          description: Quote calculado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutQuoteResponse'
+
+  /v1/checkout/orders:
+    post:
+      summary: Crear orden pending
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Orden creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+
+  /v1/payments/webhooks/{provider}:
+    post:
+      summary: Webhook de pagos
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+            enum: [stripe, mercadopago, paypal]
+      responses:
+        '200':
+          description: Webhook recibido
+
+  /v1/scans/validate:
+    post:
+      summary: Validar ticket QR (online)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScanValidateRequest'
+      responses:
+        '200':
+          description: Resultado validación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanValidateResponse'
+
+  /v1/reports/events/{eventId}/overview:
+    get:
+      summary: Resumen de ventas de evento
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: KPIs del evento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventOverviewReport'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        fullName: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    AuthResponse:
+      type: object
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { type: string }
+
+    CreateEventRequest:
+      type: object
+      required: [organizerId, title, startsAt]
+      properties:
+        organizerId: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string }
+        category: { type: string }
+        city: { type: string }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        venueName: { type: string }
+
+    Event:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        organizerId: { type: string, format: uuid }
+        title: { type: string }
+        status: { type: string, enum: [draft, published, paused, ended] }
+        startsAt: { type: string, format: date-time }
+
+    CreateTicketTypeRequest:
+      type: object
+      required: [name, priceAmount, stock]
+      properties:
+        name: { type: string }
+        priceAmount: { type: integer, minimum: 0 }
+        currency: { type: string, example: CLP }
+        stock: { type: integer, minimum: 0 }
+        salesStartAt: { type: string, format: date-time }
+        salesEndAt: { type: string, format: date-time }
+        maxPerOrder: { type: integer, minimum: 1 }
+
+    TicketType:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        eventId: { type: string, format: uuid }
+        name: { type: string }
+        priceAmount: { type: integer }
+        stock: { type: integer }
+
+    CheckoutQuoteRequest:
+      type: object
+      required: [eventId, items]
+      properties:
+        eventId: { type: string, format: uuid }
+        couponCode: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            required: [ticketTypeId, qty]
+            properties:
+              ticketTypeId: { type: string, format: uuid }
+              qty: { type: integer, minimum: 1 }
+
+    CheckoutQuoteResponse:
+      type: object
+      properties:
+        subtotal: { type: integer }
+        fees: { type: integer }
+        discounts: { type: integer }
+        total: { type: integer }
+        currency: { type: string }
+
+    CreateOrderRequest:
+      type: object
+      required: [eventId, items, buyer]
+      properties:
+        eventId: { type: string, format: uuid }
+        referralToken: { type: string }
+        couponCode: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            required: [ticketTypeId, qty]
+            properties:
+              ticketTypeId: { type: string, format: uuid }
+              qty: { type: integer, minimum: 1 }
+        buyer:
+          type: object
+          required: [email, fullName]
+          properties:
+            email: { type: string, format: email }
+            fullName: { type: string }
+
+    Order:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        eventId: { type: string, format: uuid }
+        status: { type: string, enum: [pending, paid, failed, canceled] }
+        total: { type: integer }
+        currency: { type: string }
+
+    ScanValidateRequest:
+      type: object
+      required: [eventId, qr]
+      properties:
+        eventId: { type: string, format: uuid }
+        qr: { type: string }
+
+    ScanValidateResponse:
+      type: object
+      properties:
+        result:
+          type: string
+          enum: [valid, already_used, invalid]
+        ticketId: { type: string, format: uuid }
+        attendeeName: { type: string }
+        ticketTypeName: { type: string }
+
+    EventOverviewReport:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        soldTickets: { type: integer }
+        grossRevenue: { type: integer }
+        netRevenue: { type: integer }
+        scannedTickets: { type: integer }
+        attendanceRate: { type: number, format: float }
